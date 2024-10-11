@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+}
+
+contract ERC20 is Context {
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    uint256 private _totalSupply;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+
+    constructor(string memory name_, string memory symbol_, uint8 decimals_) {
+        _name = name_;
+        _symbol = symbol_;
+        _decimals = decimals_;
+    }
+    function name() public view returns (string memory) {
+        return _name;
+    }
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+    function decimals() public view returns (uint8) {
+        return _decimals;
+    }
+    function totalSupply() public view returns (uint256) {
+        return _totalSupply;
+    }
+    function balanceOf(address account) public view returns (uint256) {
+        return _balances[account];
+    }
+    function transfer(address to, uint256 value) public returns (bool) {
+        _transfer(_msgSender(), to, value);
+        return true;
+    }
+    function allowance(address owner, address spender) public view returns (uint256) {
+        return _allowances[owner][spender];
+    }
+    function approve(address spender, uint256 value) public returns (bool) {
+        _approve(_msgSender(), spender, value);
+        return true;
+    }
+    function transferFrom(address from, address to, uint256 value) public returns (bool) {
+        _transfer(from, to, value);
+        uint256 currentAllowance = _allowances[from][_msgSender()];
+        require(currentAllowance >= value, "ERC20: transfer amount exceeds allowance");
+        _approve(from, _msgSender(), currentAllowance - value);
+        return true;
+    }
+    function _transfer(address from, address to, uint256 value) internal virtual {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+        require(_balances[from] >= value, "ERC20: transfer amount exceeds balance");
+        _balances[from] -= value;
+        _balances[to] += value;
+        emit Transfer(from, to, value);
+    }
+    function _mint(address account, uint256 amount) internal virtual {
+        require(account != address(0), "ERC20: mint to the zero address");
+        _totalSupply += amount;
+        _balances[account] += amount;
+        emit Transfer(address(0), account, amount);
+    }
+    function _burn(address account, uint256 amount) internal virtual {
+        require(account != address(0), "ERC20: burn from the zero address");
+        require(_balances[account] >= amount, "ERC20: burn amount exceeds balance");
+        _balances[account] -= amount;
+        _totalSupply -= amount;
+        emit Transfer(account, address(0), amount);
+    }
+    function _approve(address owner, address spender, uint256 value) internal virtual {
+        require(owner != address(0), "ERC20: approve from the zero address");
+        require(spender != address(0), "ERC20: approve to the zero address");
+        _allowances[owner][spender] = value;
+        emit Approval(owner, spender, value);
+    }
+}
+
+contract Ownable is Context {
+    address private _owner;
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    constructor() {
+        _transferOwnership(_msgSender());
+    }
+
+    function owner() public view returns (address) {
+        return _owner;
+    }
+
+    modifier onlyOwner() {
+        require(_owner == _msgSender(), "Ownable: caller is not the owner");
+        _;
+    }
+
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        _transferOwnership(newOwner);
+    }
+
+    function _transferOwnership(address newOwner) internal {
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }    
+}
+
+contract DOOFYVENTURES is ERC20, Ownable {
+    uint256 private _initialTotalSupply;
+    uint256 private _totalBurned;
+    uint256 private _salesFeePercentage = 0;
+    address private _pancakeSwapPair;
+    address private _salesFeeWallet;
+    event SalesFeePercentageChanged(uint256 newSalesFeePercentage);
+    event SalesFeeWalletChanged(address newSalesFeeWallet);
+    mapping(address => bool) private _isExemptFromSalesFee;
+     mapping(address => bool) private _isWhitelistedForNoBurn;
+
+    constructor() ERC20("DOOFY VENTURES TOKEN", "DVT", 18) {
+        uint256 initialSupply = 10000000000 * (10**uint256(decimals()));
+        _mint(_msgSender(), initialSupply);
+        _initialTotalSupply = initialSupply;
+        _pancakeSwapPair = 0x10ED43C718714eb63d5aA57B78B54704E256024E;
+        _salesFeeWallet = _msgSender();
+    }
+    function setPancakeSwapPair(address newPancakeSwapPair) external onlyOwner {
+    require(newPancakeSwapPair != address(0), "PancakeSwap pair is the zero address");
+    _pancakeSwapPair = newPancakeSwapPair;
+    }
+    function setExemptFromSalesFee(address account, bool exempt) external onlyOwner {
+        require(account != address(0), "Exempt address is the zero address");
+        _isExemptFromSalesFee[account] = exempt;
+    }
+    function setWhitelistForNoBurn(address account, bool isWhitelisted) external onlyOwner {
+        require(account != address(0), "Whitelist: address is the zero address");
+        _isWhitelistedForNoBurn[account] = isWhitelisted;
+    }
+    function setSalesFeePercentage(uint256 newSalesFeePercentage) external onlyOwner {
+        require(newSalesFeePercentage <= 25, "Sales fee percentage can't exceed 25%");
+        _salesFeePercentage = newSalesFeePercentage;
+        emit SalesFeePercentageChanged(newSalesFeePercentage);
+    }
+    function setSalesFeeWallet(address newSalesFeeWallet) external onlyOwner {
+        require(newSalesFeeWallet != address(0), "Sales fee wallet is the zero address");
+        _salesFeeWallet = newSalesFeeWallet;
+        emit SalesFeeWalletChanged(newSalesFeeWallet);
+    }
+  function _transfer(address sender, address recipient, uint256 amount) internal override {
+    require(sender != address(0), "ERC20: transfer from the zero address");
+    require(recipient != address(0), "ERC20: transfer to the zero address");
+    uint256 senderBalance = balanceOf(sender);
+    require(senderBalance >= amount, "ERC20: transfer amount exceeds balance");
+
+    uint256 burnAmount = _calculateBurnAmount(amount);
+    uint256 salesFeeAmount = _calculateSalesFee(sender, recipient, amount);
+
+    // Ensure sender has enough balance for the amount, sales fee, and burn
+    require(senderBalance >= amount + salesFeeAmount + burnAmount, "ERC20: Insufficient balance for transfer, sales fee, and burn");
+
+    if (salesFeeAmount > 0) {
+        super._transfer(sender, _salesFeeWallet, salesFeeAmount);
+    }
+    super._transfer(sender, recipient, amount);
+    if (burnAmount > 0 && !_isWhitelistedForNoBurn[sender] && !_isWhitelistedForNoBurn[recipient]) {
+        _burn(sender, burnAmount); // Burn from sender's balance
+    }
+}
+
+    function _calculateBurnAmount(uint256 amount) private view returns (uint256) {
+        // Check if burning has reached the limit
+        if (_totalBurned >= _initialTotalSupply / 4) {
+            return 0;
+        }
+
+        // Calculate the burn amount as before
+        uint256 burnAmount = amount / 100; // 1% of the transaction
+        uint256 maxBurnAmount = _initialTotalSupply / 4 - _totalBurned;
+        if (burnAmount > maxBurnAmount) {
+            burnAmount = maxBurnAmount;
+        }
+
+        // Return the calculated burn amount
+        return burnAmount;
+    }
+     function _calculateSalesFee(address sender, address recipient, uint256 amount) private view returns (uint256) {
+        if ((sender == _pancakeSwapPair || recipient == _pancakeSwapPair) && !_isExemptFromSalesFee[sender]) {
+            return (amount * _salesFeePercentage) / 100;
+        }
+        return 0;
+    }
+}
